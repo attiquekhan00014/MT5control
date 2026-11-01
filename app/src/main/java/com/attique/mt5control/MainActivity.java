@@ -40,9 +40,48 @@ public class MainActivity extends AppCompatActivity {
                 fileCb = null;
             });
 
+    private android.speech.SpeechRecognizer sr;
+    private String pendingLang;
+    private final ActivityResultLauncher<String> micPerm = registerForActivityResult(
+            new ActivityResultContracts.RequestPermission(), ok -> {
+                String l = pendingLang; pendingLang = null;
+                if (l == null) return;
+                if (ok) startListen(l); else js("aiListenEnd('perm')");
+            });
+
+    private void js(String code) {
+        if (web != null) web.post(() -> web.evaluateJavascript("try{" + code + "}catch(e){}", null));
+    }
+
+    private void startListen(String lang) {
+        if (!android.speech.SpeechRecognizer.isRecognitionAvailable(this)) { js("aiListenEnd('na')"); return; }
+        if (sr != null) { try { sr.destroy(); } catch (Exception ignored) {} }
+        sr = android.speech.SpeechRecognizer.createSpeechRecognizer(this);
+        sr.setRecognitionListener(new android.speech.RecognitionListener() {
+            @Override public void onReadyForSpeech(Bundle p) {}
+            @Override public void onBeginningOfSpeech() {}
+            @Override public void onRmsChanged(float v) {}
+            @Override public void onBufferReceived(byte[] b) {}
+            @Override public void onEndOfSpeech() {}
+            @Override public void onEvent(int t, Bundle p) {}
+            @Override public void onPartialResults(Bundle p) {}
+            @Override public void onError(int e) { js("aiListenEnd('e" + e + "')"); }
+            @Override public void onResults(Bundle r) {
+                java.util.ArrayList<String> l = r.getStringArrayList(android.speech.SpeechRecognizer.RESULTS_RECOGNITION);
+                String t = (l != null && !l.isEmpty()) ? l.get(0) : "";
+                js("aiHeard(" + org.json.JSONObject.quote(t) + ")");
+            }
+        });
+        Intent i = new Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+        i.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+        i.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE, lang);
+        i.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, lang);
+        sr.startListening(i);
+    }
+
     /** functions the web app can call: window.MT5Android.watch(...) etc. */
     public class Bridge {
-        @JavascriptInterface public String version() { return "3"; }
+        @JavascriptInterface public String version() { return "4"; }
 
         /** Google blocks sign-in inside a WebView, so the sign-in page opens in the phone's browser and comes back via mt5control://signin?code=... */
         @JavascriptInterface public void signIn() {
@@ -52,6 +91,23 @@ public class MainActivity extends AppCompatActivity {
                     startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(base + "/gsign")));
                 } catch (Exception ignored) {}
             });
+        }
+
+
+        /** Voice: the Android WebView has no speech recognition of its own, so the app listens natively and hands the text back. */
+        @JavascriptInterface public void askMic() {
+            runOnUiThread(() -> {
+                if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) micPerm.launch(Manifest.permission.RECORD_AUDIO);
+            });
+        }
+        @JavascriptInterface public void listen(String lang) {
+            runOnUiThread(() -> {
+                if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) { pendingLang = lang; micPerm.launch(Manifest.permission.RECORD_AUDIO); }
+                else startListen(lang);
+            });
+        }
+        @JavascriptInterface public void stopListen() {
+            runOnUiThread(() -> { if (sr != null) { try { sr.stopListening(); } catch (Exception ignored) {} } });
         }
 
         @JavascriptInterface public String paste() {
@@ -117,7 +173,7 @@ public class MainActivity extends AppCompatActivity {
         s.setDatabaseEnabled(true);
         s.setMediaPlaybackRequiresUserGesture(false);
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
-        s.setUserAgentString(s.getUserAgentString() + " MT5App/3");
+        s.setUserAgentString(s.getUserAgentString() + " MT5App/4");
         web.addJavascriptInterface(new Bridge(), "MT5Android");
         final String host = Uri.parse(BuildConfig.APP_URL).getHost();
         web.setWebChromeClient(new WebChromeClient() {
