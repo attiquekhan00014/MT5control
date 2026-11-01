@@ -1,0 +1,22 @@
+plugins { id 'com.android.application' }
+android {
+    namespace 'com.attique.mt5control'
+    compileSdk 34
+    defaultConfig {
+        applicationId "com.attique.mt5control"
+        minSdk 24
+        targetSdk 34
+        versionCode 3
+        versionName "3.0"
+        // >>> APP LINK (change only this line if the domain changes) <<<
+        buildConfigField "String", "APP_URL", '"https://desktop-bdhrb7o.tail0eac21.ts.net/app"'
+    }
+    buildFeatures { buildConfig true }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+    buildTypes { release { minifyEnabled false } }
+}
+dependencies {
+    implementation platform('org.jetbrains.kotlin:kotlin-bom:1.8.22')
+    implementation 'androidx.appcompat:appcompat:1.7.0'
+    implementation 'androidx.swiperefreshlayout:swiperefreshlayout:1.1.0'
+}
